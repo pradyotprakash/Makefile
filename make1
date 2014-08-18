@@ -1,0 +1,88 @@
+STATIC_LIB = FALSE
+
+
+
+
+GCC = g++
+COMPILEFLAGS = -g -Wall -O3 -fno-strict-aliasing
+COMPILEFLAGS+= -I ./external/include -I /usr/include
+PROJECTDIR = ./
+OBJDIR = $(PROJECTDIR)/myobjs
+LIBDIR = $(PROJECTDIR)/mylibs
+SRCDIR = $(PROJECTDIR)/src
+SRCS := $(wildcard $(SRCDIR)/*.cpp)
+OBJS := $(SRCS:$(SRCDIR)/%.cpp= $(OBJDIR)/%.o)
+TOLINK := $(filter-out $(OBJDIR)/main.o, $(OBJS))
+BINDIR = $(PROJECTDIR)/mybins
+TARGET = $(BINDIR)/cs251_exe_31
+TARGETLIB = $(BINDIR)/cs251_exelib_31
+
+LIBS = -lBox2D -lglui -lglut -lGLU -lGL
+LINKFLAGS = -L ./external/lib -L /usr/lib
+EXTERNAL = $(PROJECTDIR)/external
+
+.PHONY: all clean distclean makelibs createDirs extract exelib executable
+all: createDirs extract makelibs exelib
+	@echo "All done"
+
+createDirs: 
+	@echo "Creating directories..."
+	@mkdir -p $(OBJDIR) $(BINDIR) $(LIBDIR)
+
+extract:
+	@echo "Extracting files..."
+	@ if [ ! -f ./external/bin/libBox2D.a ] || [ ! -d ./external/include/Box2D ]; then \
+		echo "Extracting..."; \
+		cd ./external/src; \
+		tar -zxvf Box2D.tgz; \
+		cd Box2D; \
+		mkdir build251; \
+		cd build251; \
+		cmake ../; \
+		make; \
+		make install; \
+		cd ../../../..; \
+	fi
+
+-include -include $(OBJS:.o=.d)
+
+$(OBJS):$(OBJDIR)/%.o : $(SRCDIR)/%.cpp
+	@if [ $(STATIC_LIB) != TRUE ]; then \
+	$(GCC) $(COMPILEFLAGS) $(LINKFLAGS) $(LIBS) -fPIC -c $< -o $@; \
+	else \
+		$(GCC) $(COMPILEFLAGS) $(LINKFLAGS) $(LIBS) -c $< -o $@; \
+	fi
+
+
+makelibs: $(TOLINK)
+	@echo "Making libraries..."
+	@if [ $(STATIC_LIB) = TRUE ]; then \
+		ar rcs -o $(LIBDIR)/libCS251.a $(TOLINK); \
+	else \
+		$(GCC) -shared -o \
+				$(LIBDIR)/libCS251.so $(TOLINK); \
+	fi
+
+executable: createDirs extract $(OBJS)
+	@echo "Creating executable..."
+	@$(GCC) -o $(TARGET) $(OBJS) $(COMPILEFLAGS) $(LINKFLAGS) $(LIBS)
+
+exelib: createDirs extract makelibs $(OBJS)
+	@echo "Creating executable from library..."
+	@if [ $(STATIC_LIB) = TRUE ]; then \
+		$(GCC) -o $(TARGETLIB) $(OBJDIR)/main.o $(LINKFLAGS) -L $(LIBDIR) -lCS251 $(LIBS); \
+	else \
+			$(GCC) -o $(TARGETLIB) $(OBJDIR)/main.o $(LINKFLAGS) -L$(LIBDIR) -lCS251 $(LIBS); \
+			#export LD_LIBRARY_PATH = ./mylibs/ ; \
+	fi	
+
+clean:
+	@echo "Cleaning up..."
+	@-rm -rf $(OBJDIR) $(LIBDIR) $(BINDIR)
+
+distclean: clean
+	@echo "Removing all files..."
+	@-rm -rf $(EXTERNAL)/src/Box2D
+	@-rm -rf $(EXTERNAL)/lib/Box2D
+	@-rm -f $(EXTERNAL)/lib/libBox2D.a
+	@-rm -rf $(EXTERNAL)/include/Box2D
